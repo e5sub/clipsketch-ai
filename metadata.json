@@ -1,0 +1,5 @@
+{
+  "name": "ClipSketch AI",
+  "description": "将视频瞬间转化为手绘故事。一个AI驱动的视频分析与艺术创作工具。",
+  "requestFramePermissions": []
+}

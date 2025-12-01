@@ -17,6 +17,7 @@ import { Step1Input } from './art/steps/Step1Input';
 import { Step2Base } from './art/steps/Step2Base';
 import { Step4Final } from './art/steps/Step4Final';
 import { Step5Refine } from './art/steps/Step5Refine';
+import { Step6Cover } from './art/steps/Step6Cover'; // Imported Step 6
 import { WorkflowStep } from './art/types';
 
 interface ArtGalleryProps {
@@ -57,7 +58,10 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
   const [batchJobId, setBatchJobId] = useState<string | null>(null);
   const [batchStatus, setBatchStatus] = useState<'idle' | 'pending' | 'completed' | 'failed'>('idle');
 
+  // Caption & Cover State
   const [captionOptions, setCaptionOptions] = useState<CaptionOption[]>([]);
+  const [selectedCaption, setSelectedCaption] = useState<CaptionOption | null>(null);
+  const [coverImage, setCoverImage] = useState<string | null>(null);
   
   // Step Analysis State
   const [stepDescriptions, setStepDescriptions] = useState<string[]>([]);
@@ -78,6 +82,11 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
     return localStorage.getItem('gemini_use_thinking') === 'true';
   });
 
+  const [useBatch, setUseBatch] = useState(() => {
+    // Default to false. Only true if explicitly set to 'true'.
+    return localStorage.getItem('gemini_use_batch') === 'true';
+  });
+
   const [provider, setProvider] = useState<ProviderType>(() => {
     return (localStorage.getItem('llm_provider') as ProviderType) || 'google';
   });
@@ -88,6 +97,7 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
   
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
+  const [isGeneratingCover, setIsGeneratingCover] = useState(false);
   
   const [workflowStep, setWorkflowStep] = useState<WorkflowStep>('input');
   const [isLoadingFrames, setIsLoadingFrames] = useState(false);
@@ -100,7 +110,7 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
 
   // State restoration flag
   const [isRestoring, setIsRestoring] = useState(true);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 1. Restore State from IndexedDB on Init using projectId
   useEffect(() => {
@@ -133,6 +143,9 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
           setPanelCount(savedProject.panelCount || 0);
           setSubPanels(savedProject.subPanels || []);
           setCaptionOptions(savedProject.captionOptions || []);
+          setSelectedCaption(savedProject.selectedCaption || null);
+          setCoverImage(savedProject.coverImage || null);
+          
           setWorkflowStep(savedProject.workflowStep || 'input');
           setContextDescription(savedProject.contextDescription || '');
           setCustomPrompt(savedProject.customPrompt || '');
@@ -176,6 +189,8 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
         panelCount,
         subPanels,
         captionOptions,
+        selectedCaption, // Persist selection
+        coverImage,      // Persist cover
         workflowStep,
         contextDescription,
         customPrompt,
@@ -196,7 +211,7 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
   }, [
     projectId, videoUrl, isRestoring, activeStrategy, sourceFrames, stepDescriptions, 
     baseArt, generatedArt, avatarImage, watermarkText, panelCount, 
-    subPanels, captionOptions, workflowStep, contextDescription, 
+    subPanels, captionOptions, selectedCaption, coverImage, workflowStep, contextDescription, 
     customPrompt, batchJobId, batchStatus, viewStep
   ]);
   
@@ -227,8 +242,9 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
     localStorage.setItem('gemini_api_key', apiKey);
     localStorage.setItem('gemini_base_url', baseUrl);
     localStorage.setItem('gemini_use_thinking', String(useThinking));
+    localStorage.setItem('gemini_use_batch', String(useBatch));
     localStorage.setItem('llm_provider', provider);
-  }, [apiKey, baseUrl, useThinking, provider]);
+  }, [apiKey, baseUrl, useThinking, useBatch, provider]);
 
   useEffect(() => {
     try {
@@ -280,13 +296,24 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
         const base64Data = p.imageUrl!.split(',')[1];
         zip.file(`panel_${p.index + 1}.png`, base64Data, { base64: true });
     });
+    
+    // Add Cover if exists
+    if (coverImage) {
+        const coverData = coverImage.split(',')[1];
+        zip.file(`cover_image.png`, coverData, { base64: true });
+    }
+    
+    // Add Caption if selected
+    if (selectedCaption) {
+        zip.file('caption.txt', `${selectedCaption.title}\n\n${selectedCaption.content}`);
+    }
 
     try {
       const content = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `panels_batch_${new Date().getTime()}.zip`;
+      a.download = `project_assets_${new Date().getTime()}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -325,6 +352,8 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
     setGeneratedArt(null);
     setSubPanels([]);
     setCaptionOptions([]);
+    setSelectedCaption(null);
+    setCoverImage(null);
     setWorkflowStep('input');
     
     setViewStep(1);
@@ -361,6 +390,8 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
     // RESET FUTURE STEPS
     setSubPanels([]);
     setCaptionOptions([]);
+    setSelectedCaption(null);
+    setCoverImage(null);
     setBaseArt(null);
     setGeneratedArt(null);
     
@@ -435,16 +466,22 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
 
   // Step 4: Refine Mode Logic
   const handleStartRefine = async () => {
+      const initialStatus = useBatch ? 'pending' : 'generating';
       const panels: SubPanel[] = Array.from({ length: panelCount }, (_, i) => ({
           index: i,
           imageUrl: null,
-          status: 'pending'
+          status: initialStatus
       }));
       setSubPanels(panels);
       setWorkflowStep('refine_mode');
       setViewStep(4); 
       
-      await handleBatchRequest(panels);
+      if (useBatch) {
+        await handleBatchRequest(panels);
+      } else {
+        // Parallel individual requests
+        panels.forEach(p => processPanelGeneration(p.index, false));
+      }
   };
 
   const handleBatchRequest = async (panelsToProcess: SubPanel[]) => {
@@ -527,7 +564,6 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
             });
         });
         
-        // We keep the job ID for reference, but status is done.
       } else if (result.status === 'failed') {
         setBatchStatus('failed');
         setError("批量任务执行失败或已过期。");
@@ -569,12 +605,46 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
     setTimeout(() => handleRefreshBatch(), 100);
   };
 
-  const generateSinglePanel = async (index: number) => {
-      const panel = subPanels.find(p => p.index === index);
-      if (panel) {
-          await handleBatchRequest([panel]);
+  const processPanelGeneration = async (index: number, setGeneratingStatus: boolean = true) => {
+      if (!generatedArt) return;
+
+      if (setGeneratingStatus) {
+        setSubPanels(prev => prev.map(p => 
+            p.index === index ? { ...p, status: 'generating' } : p
+        ));
+      }
+      
+      try {
+          const imageUrl = await GeminiService.refinePanel(
+            apiKey,
+            baseUrl,
+            index,
+            panelCount,
+            stepDescriptions[index] || '',
+            contextDescription,
+            generatedArt,
+            sourceFrames[index] || null,
+            avatarImage,
+            useThinking,
+            provider,
+            watermarkText
+          );
+
+          setSubPanels(prev => prev.map(p => 
+              p.index === index ? { ...p, status: 'completed', imageUrl } : p
+          ));
+      } catch (err: any) {
+          console.error("Single panel generation failed", err);
+          setSubPanels(prev => prev.map(p => 
+              p.index === index ? { ...p, status: 'error' } : p
+          ));
+          if (setGeneratingStatus) {
+            setError("单图生成失败: " + (err.message || "未知错误"));
+          }
       }
   };
+
+  const generateSinglePanel = (index: number) => processPanelGeneration(index, true);
 
   // Step 5: Generate Captions
   const handleGenerateCaption = async () => {
@@ -583,6 +653,7 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
     setIsGeneratingCaptions(true);
     setError(null);
     setCaptionOptions([]);
+    setSelectedCaption(null);
     setViewStep(5);
 
     try {
@@ -613,43 +684,107 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
     }
   };
 
+  // Step 6: Generate Cover
+  const handleGenerateCover = async () => {
+    if (!selectedCaption || !activeStrategy || sourceFrames.length === 0) {
+        setError("请先选择文案并确保有原始视频帧。");
+        return;
+    }
+
+    setIsGeneratingCover(true);
+    setError(null);
+    setViewStep(6);
+    
+    try {
+        const cover = await GeminiService.generateCover(
+            apiKey,
+            baseUrl,
+            activeStrategy,
+            contextDescription,
+            selectedCaption,
+            sourceFrames, // Pass all frames, service filters start/end
+            avatarImage,  // Pass avatar if present
+            watermarkText, // Pass watermark if present
+            useThinking,
+            provider
+        );
+        setCoverImage(cover);
+        setWorkflowStep('cover_mode');
+    } catch (err: any) {
+        handleError(err);
+    } finally {
+        setIsGeneratingCover(false);
+    }
+  };
+
   // --- RENDER STAGE CONTENT ---
+  const renderRefineView = () => (
+     <Step5Refine
+        subPanels={subPanels}
+        onBatchDownload={handleBatchDownload}
+        onDownloadSingle={handleDownloadImage}
+        onRegenerateSingle={generateSinglePanel}
+        batchJobId={batchJobId}
+        batchStatus={batchStatus}
+        onRefreshBatch={handleRefreshBatch}
+        useBatch={useBatch}
+      />
+  );
+
   const renderRightStage = () => {
     switch (viewStep) {
       case 1:
         return <Step1Input isGenerating={isAnalyzingSteps} frames={sourceFrames} />;
+      
       case 2:
-        return <Step2Base imageSrc={baseArt} isGenerating={isGeneratingImage && !baseArt && !generatedArt} />;
+        // Step 2: Base Generation
+        // If not started (no baseArt and not generating), show Step 1 result (Frames)
+        if (!baseArt && !isGeneratingImage) {
+           return <Step1Input isGenerating={false} frames={sourceFrames} />;
+        }
+        return <Step2Base imageSrc={baseArt} isGenerating={isGeneratingImage} />;
+
       case 3:
+        // Step 3: Character
+        // generatedArt starts as baseArt, so it naturally shows previous step.
+        // If skipping, it still shows generatedArt.
         return <Step4Final imageSrc={generatedArt} isGenerating={isGeneratingImage && !!baseArt} />;
+
       case 4:
-        return (
-          <Step5Refine
-             subPanels={subPanels}
-             onBatchDownload={handleBatchDownload}
-             onDownloadSingle={handleDownloadImage}
-             onRegenerateSingle={generateSinglePanel}
-             batchJobId={batchJobId}
-             batchStatus={batchStatus}
-             onRefreshBatch={handleRefreshBatch}
-           />
-        );
+        // Step 4: Refine
+        // If no panels and no active batch, show Step 3 result (Generated Art)
+        if (subPanels.length === 0 && !batchJobId) {
+             return <Step4Final imageSrc={generatedArt} isGenerating={false} />;
+        }
+        return renderRefineView();
+
       case 5:
+        // Step 5: Captions
+        // Show Refine View if available (Step 4 result), else Step 3 result
         if (subPanels.length > 0) {
-           return (
-             <Step5Refine
-                subPanels={subPanels}
-                onBatchDownload={handleBatchDownload}
-                onDownloadSingle={handleDownloadImage}
-                onRegenerateSingle={generateSinglePanel}
-                batchJobId={batchJobId}
-                batchStatus={batchStatus}
-                onRefreshBatch={handleRefreshBatch}
-              />
-           );
+           return renderRefineView();
         } else {
            return <Step4Final imageSrc={generatedArt} isGenerating={false} />;
         }
+
+      case 6:
+        // Step 6: Cover
+        // If no cover and not generating, show previous result
+        if (!coverImage && !isGeneratingCover) {
+            if (subPanels.length > 0) {
+               return renderRefineView();
+            } else {
+               return <Step4Final imageSrc={generatedArt} isGenerating={false} />;
+            }
+        }
+        return (
+          <Step6Cover 
+            imageSrc={coverImage} 
+            isGenerating={isGeneratingCover} 
+            onDownload={coverImage ? () => handleDownloadImage(coverImage!, `cover_${Date.now()}.png`) : undefined}
+          />
+        );
+
       default:
         return <Step1Input isGenerating={false} frames={sourceFrames} />;
     }
@@ -702,6 +837,8 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
         setBaseUrl={setBaseUrl}
         useThinking={useThinking}
         setUseThinking={setUseThinking}
+        useBatch={useBatch}
+        setUseBatch={setUseBatch}
         apiKey={apiKey}
         setApiKey={setApiKey}
       />
@@ -763,6 +900,28 @@ export const ArtGallery: React.FC<ArtGalleryProps> = ({ tags, videoUrl, projectI
           batchJobId={batchJobId}
           onRefreshBatch={handleRefreshBatch}
           onRecoverBatch={handleRecoverBatch}
+
+          // New Selection Props
+          selectedCaption={selectedCaption}
+          onSelectCaption={(opt) => {
+              if (opt === null) {
+                  setSelectedCaption(null); // Deselect
+              } else {
+                  setSelectedCaption({ ...opt }); // Clone
+              }
+          }}
+          onUpdateSelectedCaption={(title, content) => {
+              if (selectedCaption) {
+                  setSelectedCaption({ ...selectedCaption, title, content });
+              }
+          }}
+          
+          // New Cover Props
+          isGeneratingCover={isGeneratingCover}
+          onGenerateCover={handleGenerateCover}
+          coverImage={coverImage}
+          
+          useBatch={useBatch}
         />
 
         {/* Right Stage: Result based on View Step */}

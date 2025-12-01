@@ -415,9 +415,6 @@ export class GeminiService {
                return { status: 'completed', results: mappedResults };
           }
           
-          // CRITICAL FIX: If status is specifically COMPLETED but no results are returned (e.g. empty file or parsing error),
-          // we must return COMPLETED (with empty/missing results) or FAILED, NOT PENDING.
-          // Returning PENDING here causes infinite loops in the UI.
           if (statusResponse.status === 'completed') {
              // Treat "completed but no results" as a completed state with empty results so UI can clear loading state
              return { status: 'completed', results: [] };
@@ -509,5 +506,78 @@ export class GeminiService {
       console.error("JSON Parse Error", e);
       return [{ title: "Result (Parse Error)", content: content }];
     }
+  }
+
+  /**
+   * Step 6: Generate Video Cover
+   */
+  static async generateCover(
+    apiKey: string,
+    baseUrl: string,
+    strategy: SocialPlatformStrategy,
+    contextDescription: string,
+    selectedCaption: CaptionOption,
+    frames: FrameData[],
+    avatarImage: string | null,
+    watermarkText: string,
+    thinkingEnabled: boolean,
+    providerType: ProviderType = 'google'
+  ): Promise<string> {
+    const provider = this.getProvider(apiKey, baseUrl, providerType);
+    const model = this.getModelName(providerType, 'image');
+
+    const prompt = strategy.getCoverPrompt(
+      contextDescription, 
+      selectedCaption.title, 
+      selectedCaption.content, 
+      watermarkText, 
+      !!avatarImage, 
+      providerType === 'openai'
+    );
+    
+    const userContent: any[] = [
+        { type: "text", text: prompt }
+    ];
+
+    // Select reference frames: First 2 and Last 2
+    const indices = new Set<number>();
+    
+    // First 2
+    [0, 1].forEach(i => {
+        if (i < frames.length) indices.add(i);
+    });
+    // Last 2
+    [frames.length - 2, frames.length - 1].forEach(i => {
+        if (i >= 0) indices.add(i);
+    });
+    
+    const uniqueFrames = Array.from(indices).sort((a,b) => a-b).map(i => frames[i]);
+
+    uniqueFrames.forEach((frame) => {
+        userContent.push({ 
+           type: "image_url", 
+           image_url: { url: frame.data } 
+        });
+    });
+
+    if (avatarImage) {
+        userContent.push({ 
+           type: "image_url", 
+           image_url: { url: avatarImage } 
+        });
+    }
+
+    const messages: LLMMessage[] = [
+        { role: "user", content: userContent }
+    ];
+
+    const response = await provider.generateContent(model, messages, {
+        thinking: { enabled: thinkingEnabled }
+    });
+
+    if (response.images && response.images.length > 0) {
+        return response.images[0];
+    }
+    throw new Error("No cover image generated.");
   }
 }

@@ -14,11 +14,13 @@ interface Step5RefineProps {
   batchJobId?: string | null;
   batchStatus?: 'idle' | 'pending' | 'completed' | 'failed';
   onRefreshBatch?: () => void;
+  
+  useBatch: boolean;
 }
 
 export const Step5Refine: React.FC<Step5RefineProps> = ({ 
   subPanels, onBatchDownload, onDownloadSingle, onRegenerateSingle,
-  batchJobId, batchStatus, onRefreshBatch
+  batchJobId, batchStatus, onRefreshBatch, useBatch
 }) => {
   const completedCount = subPanels.filter(p => p.status === 'completed').length;
 
@@ -30,7 +32,8 @@ export const Step5Refine: React.FC<Step5RefineProps> = ({
           精修分镜
         </h3>
         
-        {batchJobId ? (
+        {/* Only show Refresh Button if useBatch is active AND there is a jobId */}
+        {useBatch && batchJobId ? (
             <div className="flex items-center gap-2">
                  <span className="text-xs text-slate-400 hidden sm:inline">任务ID: {batchJobId.slice(-8)}</span>
                  <Button 
@@ -56,7 +59,8 @@ export const Step5Refine: React.FC<Step5RefineProps> = ({
         )}
       </div>
 
-      {batchJobId && batchStatus === 'pending' ? (
+      {/* Only show the full blocking loading UI if useBatch is active */}
+      {useBatch && batchJobId && batchStatus === 'pending' ? (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 flex flex-col items-center justify-center text-center min-h-[300px]">
               <div className="relative mb-6">
                  <div className="w-16 h-16 rounded-full border-4 border-slate-800 border-t-indigo-500 animate-spin"></div>

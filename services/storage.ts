@@ -18,6 +18,10 @@ export interface ProjectState {
   panelCount: number;
   subPanels: SubPanel[];
   captionOptions: CaptionOption[];
+  // New fields
+  selectedCaption: CaptionOption | null;
+  coverImage: string | null;
+  
   workflowStep: WorkflowStep;
   contextDescription: string;
   customPrompt: string;

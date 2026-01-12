@@ -88,6 +88,12 @@
 5.  **앱 접속**
     브라우저를 열고 `http://localhost:3000`으로 접속하세요.
 
+## Docker 배포
+
+```bash
+docker run -d --restart=always --name clipsketch-ai -p 3000:3000 earisty/clipsketch-ai:latest
+```
+
 ## 📚 사용 가이드
 
 1.  **동영상 가져오기**:

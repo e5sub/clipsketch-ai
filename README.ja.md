@@ -88,6 +88,12 @@
 5.  **アプリへのアクセス**
     ブラウザで `http://localhost:3000` を開きます。
 
+## Docker デプロイ
+
+```bash
+docker run -d --restart=always --name clipsketch-ai -p 3000:3000 earisty/clipsketch-ai:latest
+```
+
 ## 📚 ユーザーガイド
 
 1.  **動画のインポート**:

@@ -87,6 +87,12 @@ More than just a video player, it is an **AI-powered content creation workbench*
 5.  **Visit App**
     Open your browser and visit `http://localhost:3000`.
 
+## Docker Deployment
+
+```bash
+docker run -d --restart=always --name clipsketch-ai -p 3000:3000 earisty/clipsketch-ai:latest
+```
+
 ## 📚 User Guide
 
 1.  **Import Video**:

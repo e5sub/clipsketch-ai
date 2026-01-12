@@ -88,6 +88,12 @@
 5.  **访问应用**
     打开浏览器访问 `http://localhost:3000`。
 
+## Docker 部署
+
+```bash
+docker run -d --restart=always --name clipsketch-ai -p 3000:3000 earisty/clipsketch-ai:latest
+```
+
 ## 📚 使用指南
 
 1.  **导入视频**：
